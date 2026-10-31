@@ -5,6 +5,9 @@ from app.core.dataset import (
     get_dataset_summary,
 )
 from app.scheduling.routes import router as schedule_router
+from app.bookings.routes import router as booking_router
+from app.examinations.routes import router as exam_router
+from app.rescheduling.routes import router as reschedule_router
 
 app = FastAPI(
     title="CIT Campus Scheduler API",
@@ -13,6 +16,9 @@ app = FastAPI(
 )
 
 app.include_router(schedule_router)
+app.include_router(booking_router)
+app.include_router(exam_router)
+app.include_router(reschedule_router)
 
 
 @app.get("/")
@@ -49,6 +55,26 @@ def dataset_info():
             "institute": dataset["institute"],
             "calendar": dataset["calendar"],
             "counts": get_dataset_summary()["counts"],
+        }
+
+    except (FileNotFoundError, ValueError) as error:
+        raise HTTPException(status_code=500, detail=str(error))
+
+
+@app.get("/api/dataset/full")
+def dataset_full():
+    """Return the full read-only dataset records."""
+    try:
+        dataset = load_dataset()
+
+        return {
+            "rooms": dataset["rooms"],
+            "faculty": dataset["faculty"],
+            "student_groups": dataset["student_groups"],
+            "courses": dataset["courses"],
+            "sessions": dataset["sessions"],
+            "booking_requests": dataset["booking_requests"],
+            "exams": dataset["exams"],
         }
 
     except (FileNotFoundError, ValueError) as error:
