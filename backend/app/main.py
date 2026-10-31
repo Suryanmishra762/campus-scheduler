@@ -6,6 +6,7 @@ from app.core.dataset import (
 )
 from app.scheduling.routes import router as schedule_router
 from app.bookings.routes import router as booking_router
+from app.examinations.routes import router as exam_router
 
 app = FastAPI(
     title="CIT Campus Scheduler API",
@@ -15,6 +16,7 @@ app = FastAPI(
 
 app.include_router(schedule_router)
 app.include_router(booking_router)
+app.include_router(exam_router)
 
 
 @app.get("/")
