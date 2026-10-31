@@ -6,9 +6,8 @@ import UpcomingExams from '../components/dashboard/UpcomingExams';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import ErrorAlert from '../components/ui/ErrorAlert';
 import { useApi } from '../hooks/useApi';
-import { fetchDatasetSummary } from '../services/api';
-import { dashboardStats as fallbackStats, recentBookings } from '../data/mockData';
-import type { DashboardStats, DatasetSummaryResponse } from '../types';
+import { fetchDatasetSummary, fetchRecentBookings } from '../services/api';
+import type { DashboardStats, DatasetSummaryResponse, BookingRequest } from '../types';
 
 /** Map the backend summary response to the UI stat shape. */
 function toStats(summary: DatasetSummaryResponse): DashboardStats {
@@ -23,66 +22,79 @@ function toStats(summary: DatasetSummaryResponse): DashboardStats {
 export default function DashboardPage() {
   const {
     data: summary,
-    loading,
-    error,
-    refetch,
+    loading: statsLoading,
+    error: statsError,
+    refetch: refetchStats,
   } = useApi(fetchDatasetSummary);
 
-  // Use API data when available, otherwise fall back to mock data
-  const stats: DashboardStats = summary ? toStats(summary) : fallbackStats;
-  const isLive = !!summary;
+  const {
+    data: liveBookings,
+    loading: bookingsLoading,
+    error: bookingsError,
+    refetch: refetchBookings,
+  } = useApi(fetchRecentBookings);
+
+  const stats: DashboardStats | null = summary ? toStats(summary) : null;
+  const bookings: BookingRequest[] = liveBookings ?? [];
 
   return (
     <div className="space-y-6">
-      {/* API connection banner */}
-      {!loading && error && (
+      {/* Stats Error state */}
+      {!statsLoading && statsError && (
         <ErrorAlert
-          message={`${error}. Showing offline data.`}
-          onRetry={refetch}
+          message={`Failed to load dashboard statistics: ${statsError}`}
+          onRetry={refetchStats}
         />
       )}
 
       {/* Stats Grid */}
-      {loading ? (
-        <LoadingSpinner message="Loading dashboard statistics…" />
-      ) : (
+      {statsLoading ? (
+        <div className="bg-white rounded-xl border border-slate-200 p-8 shadow-sm">
+          <LoadingSpinner message="Loading dashboard statistics from backend…" />
+        </div>
+      ) : stats ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
           <StatCard
             title="Total Rooms"
             value={stats.totalRooms}
             icon={DoorOpen}
-            trend={isLive ? `${stats.totalRooms} in dataset` : '3 under maintenance'}
+            trend={`${stats.totalRooms} venues registered`}
             color="indigo"
           />
           <StatCard
             title="Faculty Members"
             value={stats.totalFaculty}
             icon={Users}
-            trend={isLive ? `${stats.totalFaculty} registered` : '2 on leave today'}
+            trend={`${stats.totalFaculty} registered faculty`}
             color="emerald"
           />
           <StatCard
             title="Active Sessions"
             value={stats.activeSessions}
             icon={CalendarClock}
-            trend={isLive ? 'From dataset' : 'Week 5 of semester'}
+            trend={`${stats.activeSessions} academic sessions`}
             color="amber"
           />
           <StatCard
             title="Pending Bookings"
             value={stats.pendingBookings}
             icon={Clock}
-            trend={isLive ? 'Booking requests' : '3 new today'}
+            trend={`${stats.pendingBookings} venue requests`}
             color="rose"
           />
         </div>
-      )}
+      ) : null}
 
       {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Recent Bookings — spans 2 columns */}
         <div className="lg:col-span-2">
-          <RecentBookings bookings={recentBookings} />
+          <RecentBookings
+            bookings={bookings}
+            loading={bookingsLoading}
+            error={bookingsError}
+            onRetry={refetchBookings}
+          />
         </div>
 
         {/* Right Sidebar */}

@@ -63,7 +63,7 @@ export interface BookingRequest {
   venue: string;
   date: string;
   timeSlot: string;
-  status: 'pending' | 'approved' | 'rejected';
+  status: 'pending' | 'approved' | 'rejected' | 'alternative_offered';
   category: 'guest_lecture' | 'department_event' | 'club_event' | 'institute_event';
   createdAt: string;
 }
@@ -141,6 +141,93 @@ export interface CalendarPeriod {
   teaching: boolean;
 }
 
+/** Booking time window within a booking request */
+export interface DatasetBookingTimeWindow {
+  day: string;
+  from_period: number;
+  to_period: number;
+}
+
+/** Individual booking request item in the dataset (matches backend dataset.booking_requests[]) */
+export interface DatasetBookingRequest {
+  id: string;
+  submitted_at: string;
+  requester: string;
+  role: string;
+  department: string | null;
+  requested_category: string;
+  title: string;
+  attendance: number;
+  duration_periods: number;
+  windows: DatasetBookingTimeWindow[];
+  room_types: string[];
+  needs: string[];
+  requested_room: string | null;
+  mandatory_for_groups: string[];
+  series_id: string | null;
+  raw_text: string;
+}
+
+export interface Course {
+  id: string;
+  title: string;
+  department: string;
+  year: number;
+  lecture_hours: number;
+  tutorial_hours: number;
+  lab_blocks: number;
+}
+
+export interface StudentGroup {
+  id: string;
+  name: string;
+  year: number;
+  department: string;
+  size: number;
+  needs_accessible: boolean;
+}
+
+export interface ExamRoomAllocation {
+  room_id: string;
+  seats_used: number;
+}
+
+export interface ScheduledExam {
+  exam_id: string;
+  course_ids: string[];
+  groups: string[];
+  size: number;
+  day: string;
+  session: 'AM' | 'PM';
+  rooms: ExamRoomAllocation[];
+}
+
+export interface UnscheduledExam {
+  exam_id: string;
+  reason: string;
+}
+
+export interface ExamScheduleResult {
+  total_exams: number;
+  scheduled_count: number;
+  unscheduled_count: number;
+  scheduled: ScheduledExam[];
+  unscheduled: UnscheduledExam[];
+  slots_used: number;
+  slots_available: number;
+}
+
+/** GET /api/dataset/full */
+export interface DatasetFullResponse {
+  rooms: Room[];
+  faculty: Faculty[];
+  student_groups: StudentGroup[];
+  courses: Course[];
+  sessions: unknown[];
+  booking_requests: DatasetBookingRequest[];
+  exams: unknown[];
+}
+
 /** POST /api/schedule/generate */
 export interface ScheduleGenerateResponse {
   success: boolean;
@@ -150,6 +237,11 @@ export interface ScheduleGenerateResponse {
   unscheduled: UnscheduledSession[];
   diagnostics: ScheduleDiagnostics;
   solve_time_seconds: number;
+}
+
+export interface FullTimetableData {
+  schedule: ScheduleGenerateResponse;
+  dataset: DatasetFullResponse;
 }
 
 export interface ScheduledSession {
@@ -178,4 +270,80 @@ export interface ScheduleDiagnostics {
   unscheduled_count: number;
   objective_value: number | null;
   solver_status: string;
+}
+
+// ══════════════════════════════════════════════
+//  Booking Processing & Decision Types
+// ══════════════════════════════════════════════
+
+export type DecisionStatus = 'approved' | 'rejected' | 'alternative_offered';
+
+export interface AllocatedSlot {
+  room_id: string;
+  day: string;
+  start_period: number;
+  end_period: number;
+}
+
+export interface BookingDecision {
+  request_id: string;
+  title: string;
+  requester: string;
+  status: DecisionStatus;
+  allocated: AllocatedSlot | null;
+  alternative: AllocatedSlot | null;
+  reasons: string[];
+}
+
+/** POST /api/bookings/process */
+export interface ProcessBookingsResponse {
+  total: number;
+  summary: {
+    approved: number;
+    rejected: number;
+    alternative_offered: number;
+  };
+  decisions: BookingDecision[];
+}
+
+/** Combined booking request joined with engine decision */
+export interface ProcessedBooking {
+  id: string;
+  title: string;
+  requester: string;
+  role: string;
+  department: string | null;
+  requested_category: string;
+  attendance: number;
+  duration_periods: number;
+  windows: DatasetBookingTimeWindow[];
+  room_types: string[];
+  needs: string[];
+  requested_room: string | null;
+  mandatory_for_groups: string[];
+  series_id: string | null;
+  raw_text: string;
+  submitted_at: string;
+
+  // Decision fields
+  status: DecisionStatus | 'pending';
+  allocated: AllocatedSlot | null;
+  alternative: AllocatedSlot | null;
+  reasons: string[];
+
+  // Resolved display fields
+  venue: string;
+  day: string;
+  timeSlot: string;
+}
+
+export interface FullBookingsData {
+  total: number;
+  summary: {
+    approved: number;
+    rejected: number;
+    alternative_offered: number;
+    pending: number;
+  };
+  bookings: ProcessedBooking[];
 }

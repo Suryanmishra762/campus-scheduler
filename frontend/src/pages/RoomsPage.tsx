@@ -1,81 +1,12 @@
 import { useState } from 'react';
 import { Search, MapPin, Users, Monitor, Wifi, Wind, Accessibility } from 'lucide-react';
+import type { Room } from '../types';
+import { fetchRooms } from '../services/api';
+import { useApi } from '../hooks/useApi';
+import LoadingSpinner from '../components/ui/LoadingSpinner';
+import ErrorAlert from '../components/ui/ErrorAlert';
 
 type RoomStatus = 'Available' | 'Occupied' | 'Under Maintenance';
-
-interface Room {
-  id: string;
-  name: string;
-  building: string;
-  capacity: number;
-  type: string;
-  status: RoomStatus;
-  accessible: boolean;
-  features: string[];
-}
-
-const rooms: Room[] = [
-  {
-    id: '1',
-    name: 'Main Auditorium',
-    building: 'Admin Block',
-    capacity: 500,
-    type: 'auditorium',
-    status: 'Available',
-    accessible: true,
-    features: ['Projector', 'Sound System', 'AC', 'Wi-Fi'],
-  },
-  {
-    id: '2',
-    name: 'Lecture Hall 1',
-    building: 'Lecture Hall Complex',
-    capacity: 200,
-    type: 'lecture_hall',
-    status: 'Occupied',
-    accessible: true,
-    features: ['Projector', 'AC', 'Wi-Fi'],
-  },
-  {
-    id: '3',
-    name: 'Computing Lab 1',
-    building: 'CSE Building',
-    capacity: 90,
-    type: 'lab_cs',
-    status: 'Available',
-    accessible: false,
-    features: ['Computers', 'Projector', 'AC', 'Wi-Fi'],
-  },
-  {
-    id: '4',
-    name: 'Seminar Hall 1',
-    building: 'Library Building',
-    capacity: 150,
-    type: 'seminar_hall',
-    status: 'Available',
-    accessible: true,
-    features: ['Projector', 'AC', 'Wi-Fi', 'Video Conferencing'],
-  },
-  {
-    id: '5',
-    name: 'Classroom A-101',
-    building: 'Academic Block A',
-    capacity: 90,
-    type: 'classroom',
-    status: 'Occupied',
-    accessible: false,
-    features: ['Projector', 'Wi-Fi'],
-  },
-  {
-    id: '6',
-    name: 'Electronics Lab 1',
-    building: 'EE-ECE Building',
-    capacity: 80,
-    type: 'lab_elec',
-    status: 'Under Maintenance',
-    accessible: false,
-    features: ['Lab Equipment', 'AC', 'Wi-Fi'],
-  },
-];
 
 const statusStyles: Record<RoomStatus, string> = {
   Available: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20',
@@ -85,11 +16,74 @@ const statusStyles: Record<RoomStatus, string> = {
 
 const filterOptions = ['All', 'Lecture Halls', 'Labs', 'Seminar Halls'] as const;
 
+const FEATURE_LABELS: Record<string, string> = {
+  projector: 'Projector',
+  ac: 'AC',
+  pa_system: 'Sound System',
+  stage: 'Stage',
+  computers: 'Computers',
+  power_benches: 'Power Benches',
+  wifi: 'Wi-Fi',
+  'wi-fi': 'Wi-Fi',
+  'sound system': 'Sound System',
+  'video conferencing': 'Video Conferencing',
+  'lab equipment': 'Lab Equipment',
+};
+
+function formatFeature(feature: string): string {
+  const lower = feature.toLowerCase().trim();
+  if (FEATURE_LABELS[lower]) {
+    return FEATURE_LABELS[lower];
+  }
+  return feature
+    .split('_')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+function getFeatureIcon(feature: string) {
+  const lower = feature.toLowerCase();
+  if (lower === 'wi-fi' || lower === 'wifi') {
+    return <Wifi className="h-3 w-3" />;
+  }
+  if (lower === 'ac') {
+    return <Wind className="h-3 w-3" />;
+  }
+  if (
+    lower === 'projector' ||
+    lower === 'computers' ||
+    lower === 'video conferencing'
+  ) {
+    return <Monitor className="h-3 w-3" />;
+  }
+  return null;
+}
+
+function getRoomStatus(room: Room): RoomStatus {
+  if ((room as { status?: RoomStatus }).status) {
+    return (room as { status?: RoomStatus }).status!;
+  }
+  // Rooms with active maintenance entries in CIT dataset
+  if (room.id === 'LH-4' || room.id === 'CR-103') {
+    return 'Under Maintenance';
+  }
+  return 'Available';
+}
+
 export default function RoomsPage() {
   const [search, setSearch] = useState('');
   const [activeFilter, setActiveFilter] = useState<string>('All');
 
-  const filteredRooms = rooms.filter((room) => {
+  const {
+    data: liveRooms,
+    loading,
+    error,
+    refetch,
+  } = useApi(fetchRooms);
+
+  const displayedRooms: Room[] = liveRooms ?? [];
+
+  const filteredRooms = displayedRooms.filter((room) => {
     const matchesSearch =
       room.name.toLowerCase().includes(search.toLowerCase()) ||
       room.building.toLowerCase().includes(search.toLowerCase());
@@ -98,7 +92,12 @@ export default function RoomsPage() {
     if (activeFilter === 'Lecture Halls') {
       matchesFilter = room.type === 'lecture_hall' || room.type === 'auditorium';
     } else if (activeFilter === 'Labs') {
-      matchesFilter = room.type === 'lab_cs' || room.type === 'lab_elec';
+      matchesFilter =
+        room.type === 'lab_cs' ||
+        room.type === 'lab_elec' ||
+        room.type === 'lab_phy' ||
+        room.type === 'lab_civil' ||
+        room.type === 'workshop';
     } else if (activeFilter === 'Seminar Halls') {
       matchesFilter = room.type === 'seminar_hall';
     }
@@ -147,62 +146,82 @@ export default function RoomsPage() {
         ))}
       </div>
 
-      {/* Room Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {filteredRooms.map((room) => (
-          <div
-            key={room.id}
-            className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm hover:shadow-md transition-shadow"
-          >
-            {/* Top Row: Name & Status */}
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="font-semibold text-slate-900">{room.name}</h3>
-                <div className="flex items-center gap-1.5 mt-1">
-                  <MapPin className="h-3.5 w-3.5 text-slate-400" />
-                  <span className="text-sm text-slate-500">{room.building}</span>
+      {/* Error state */}
+      {!loading && error && (
+        <ErrorAlert
+          message={error}
+          onRetry={refetch}
+        />
+      )}
+
+      {/* Loading state */}
+      {loading ? (
+        <LoadingSpinner message="Loading campus rooms & venues..." />
+      ) : !error ? (
+        /* Room Cards Grid */
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {filteredRooms.map((room) => {
+            const status = getRoomStatus(room);
+
+            return (
+              <div
+                key={room.id}
+                className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm hover:shadow-md transition-shadow"
+              >
+                {/* Top Row: Name & Status */}
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="font-semibold text-slate-900">{room.name}</h3>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <MapPin className="h-3.5 w-3.5 text-slate-400" />
+                      <span className="text-sm text-slate-500">{room.building}</span>
+                    </div>
+                  </div>
+                  <span
+                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap ${statusStyles[status]}`}
+                  >
+                    {status}
+                  </span>
+                </div>
+
+                {/* Capacity */}
+                <div className="mt-4 flex items-center gap-2">
+                  <Users className="h-4 w-4 text-slate-400" />
+                  <span className="text-sm text-slate-600">{room.capacity} seats</span>
+                  {room.accessible && (
+                    <span className="ml-auto flex items-center gap-1 text-xs text-emerald-600 font-medium">
+                      <Accessibility className="h-3.5 w-3.5" />
+                      Accessible
+                    </span>
+                  )}
+                </div>
+
+                {/* Features */}
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {room.features.map((feature) => (
+                    <span
+                      key={feature}
+                      className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-xs text-slate-600"
+                    >
+                      {getFeatureIcon(feature)}
+                      {formatFeature(feature)}
+                    </span>
+                  ))}
                 </div>
               </div>
-              <span
-                className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium whitespace-nowrap ${statusStyles[room.status]}`}
-              >
-                {room.status}
-              </span>
-            </div>
+            );
+          })}
+        </div>
+      ) : null}
 
-            {/* Capacity */}
-            <div className="mt-4 flex items-center gap-2">
-              <Users className="h-4 w-4 text-slate-400" />
-              <span className="text-sm text-slate-600">{room.capacity} seats</span>
-              {room.accessible && (
-                <span className="ml-auto flex items-center gap-1 text-xs text-emerald-600 font-medium">
-                  <Accessibility className="h-3.5 w-3.5" />
-                  Accessible
-                </span>
-              )}
-            </div>
-
-            {/* Features */}
-            <div className="mt-3 flex flex-wrap gap-1.5">
-              {room.features.map((feature) => (
-                <span
-                  key={feature}
-                  className="inline-flex items-center gap-1 rounded-md bg-slate-100 px-2 py-0.5 text-xs text-slate-600"
-                >
-                  {feature === 'Wi-Fi' && <Wifi className="h-3 w-3" />}
-                  {feature === 'AC' && <Wind className="h-3 w-3" />}
-                  {(feature === 'Projector' ||
-                    feature === 'Computers' ||
-                    feature === 'Video Conferencing') && (
-                    <Monitor className="h-3 w-3" />
-                  )}
-                  {feature}
-                </span>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
+      {/* Empty State */}
+      {!loading && !error && filteredRooms.length === 0 && (
+        <div className="rounded-xl border border-slate-200 bg-white p-12 text-center">
+          <p className="text-sm text-slate-500">
+            No rooms or venues found matching your criteria.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

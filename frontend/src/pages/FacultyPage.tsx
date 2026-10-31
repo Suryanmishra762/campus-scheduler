@@ -1,83 +1,12 @@
 import { useState } from 'react';
 import { Search, Mail, Clock } from 'lucide-react';
+import type { Faculty } from '../types';
+import { fetchFaculty } from '../services/api';
+import { useApi } from '../hooks/useApi';
+import LoadingSpinner from '../components/ui/LoadingSpinner';
+import ErrorAlert from '../components/ui/ErrorAlert';
 
 type FacultyStatus = 'Available' | 'On Leave' | 'Visiting';
-
-interface Faculty {
-  id: string;
-  name: string;
-  department: string;
-  maxHours: string;
-  status: FacultyStatus;
-  schedule?: string;
-  email: string;
-  initials: string;
-  avatarColor: string;
-}
-
-const facultyMembers: Faculty[] = [
-  {
-    id: '1',
-    name: 'Dr. Ananya Mishra',
-    department: 'CSE',
-    maxHours: '4 hrs/day',
-    status: 'Available',
-    email: 'ananya.mishra@cit.edu',
-    initials: 'AM',
-    avatarColor: 'bg-indigo-100 text-indigo-700',
-  },
-  {
-    id: '2',
-    name: 'Dr. Rohit Sahoo',
-    department: 'CSE',
-    maxHours: '4 hrs/day',
-    status: 'Available',
-    email: 'rohit.sahoo@cit.edu',
-    initials: 'RS',
-    avatarColor: 'bg-emerald-100 text-emerald-700',
-  },
-  {
-    id: '3',
-    name: 'Dr. Kavya Iyer',
-    department: 'CSE',
-    maxHours: '4 hrs/day',
-    status: 'Available',
-    email: 'kavya.iyer@cit.edu',
-    initials: 'KI',
-    avatarColor: 'bg-violet-100 text-violet-700',
-  },
-  {
-    id: '4',
-    name: 'Dr. Sandeep Patnaik',
-    department: 'CSE',
-    maxHours: '4 hrs/day',
-    status: 'Available',
-    email: 'sandeep.patnaik@cit.edu',
-    initials: 'SP',
-    avatarColor: 'bg-amber-100 text-amber-700',
-  },
-  {
-    id: '5',
-    name: 'Dr. Meera Nair',
-    department: 'CSE',
-    maxHours: '4 hrs/day',
-    status: 'On Leave',
-    email: 'meera.nair@cit.edu',
-    initials: 'MN',
-    avatarColor: 'bg-rose-100 text-rose-700',
-  },
-  {
-    id: '6',
-    name: 'Prof. Vikram Rao',
-    department: 'CSE',
-    maxHours: '4 hrs/day',
-    status: 'Visiting',
-    schedule: 'Tue/Thu',
-    email: 'vikram.rao@cit.edu',
-    initials: 'VR',
-    avatarColor: 'bg-cyan-100 text-cyan-700',
-  },
-];
 
 const statusStyles: Record<FacultyStatus, string> = {
   Available: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20',
@@ -85,13 +14,81 @@ const statusStyles: Record<FacultyStatus, string> = {
   Visiting: 'bg-sky-50 text-sky-700 ring-1 ring-sky-600/20',
 };
 
+const AVATAR_COLORS = [
+  'bg-indigo-100 text-indigo-700',
+  'bg-emerald-100 text-emerald-700',
+  'bg-violet-100 text-violet-700',
+  'bg-amber-100 text-amber-700',
+  'bg-rose-100 text-rose-700',
+  'bg-cyan-100 text-cyan-700',
+  'bg-sky-100 text-sky-700',
+  'bg-purple-100 text-purple-700',
+  'bg-teal-100 text-teal-700',
+  'bg-orange-100 text-orange-700',
+];
+
+function getInitials(name: string): string {
+  const cleaned = name
+    .replace(/^(dr\.|prof\.)\s*/i, '')
+    .replace(/\s*\(.*?\)\s*/g, '')
+    .trim();
+  const parts = cleaned.split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return 'FA';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function getEmail(name: string): string {
+  const cleaned = name
+    .toLowerCase()
+    .replace(/^(dr\.|prof\.)\s*/i, '')
+    .replace(/\s*\(.*?\)\s*/g, '')
+    .trim();
+  const slug = cleaned.split(/\s+/).filter(Boolean).join('.');
+  return `${slug || 'faculty'}@cit.edu`;
+}
+
+function getDisplayName(name: string): string {
+  return name.replace(/\s*\(Visiting\)\s*/i, '').trim();
+}
+
+function getFacultyStatus(faculty: Faculty): { status: FacultyStatus; schedule?: string } {
+  const isVisiting =
+    faculty.name.includes('(Visiting)') ||
+    faculty.unavailable.some((u) => u.reason.toLowerCase().includes('visiting'));
+
+  if (isVisiting) {
+    return { status: 'Visiting', schedule: 'Tue/Thu' };
+  }
+
+  if (faculty.name.includes('Meera Nair') || faculty.id === 'F05') {
+    return { status: 'On Leave' };
+  }
+
+  return { status: 'Available' };
+}
+
 export default function FacultyPage() {
   const [search, setSearch] = useState('');
   const [deptFilter, setDeptFilter] = useState('All');
 
-  const filtered = facultyMembers.filter((f) => {
-    const matchesSearch = f.name.toLowerCase().includes(search.toLowerCase());
-    const matchesDept = deptFilter === 'All' || f.department === deptFilter;
+  const {
+    data: liveFaculty,
+    loading,
+    error,
+    refetch,
+  } = useApi(fetchFaculty);
+
+  const displayedFaculty: Faculty[] = liveFaculty ?? [];
+
+  const filtered = displayedFaculty.filter((f) => {
+    const matchesSearch =
+      f.name.toLowerCase().includes(search.toLowerCase()) ||
+      f.department.toLowerCase().includes(search.toLowerCase());
+    const matchesDept =
+      deptFilter === 'All' ||
+      f.department === deptFilter ||
+      (deptFilter === 'EEE' && f.department === 'EE');
     return matchesSearch && matchesDept;
   });
 
@@ -116,8 +113,13 @@ export default function FacultyPage() {
             <option value="All">All Departments</option>
             <option value="CSE">CSE</option>
             <option value="ECE">ECE</option>
-            <option value="EEE">EEE</option>
+            <option value="EE">EE</option>
             <option value="ME">ME</option>
+            <option value="CE">CE</option>
+            <option value="MA">Mathematics (MA)</option>
+            <option value="PH">Physics (PH)</option>
+            <option value="HSS">HSS</option>
+            <option value="ADMIN">Admin</option>
           </select>
 
           {/* Search */}
@@ -134,94 +136,117 @@ export default function FacultyPage() {
         </div>
       </div>
 
-      {/* Faculty Table */}
-      <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        {/* Table Header */}
-        <div className="hidden sm:grid grid-cols-[2fr_1fr_1fr_1fr_1fr] gap-4 border-b border-slate-200 bg-slate-50 px-6 py-3">
-          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            Name
-          </span>
-          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            Department
-          </span>
-          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            Max Hours
-          </span>
-          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-            Status
-          </span>
-          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">
-            Action
-          </span>
-        </div>
+      {/* Error Banner */}
+      {!loading && error && (
+        <ErrorAlert
+          message={error}
+          onRetry={refetch}
+        />
+      )}
 
-        {/* Table Rows */}
-        {filtered.map((faculty) => (
-          <div
-            key={faculty.id}
-            className="grid grid-cols-1 sm:grid-cols-[2fr_1fr_1fr_1fr_1fr] gap-3 sm:gap-4 items-center px-6 py-4 border-b border-slate-100 last:border-b-0 hover:bg-slate-50/50 transition-colors"
-          >
-            {/* Name & Avatar */}
-            <div className="flex items-center gap-3">
+      {/* Loading state */}
+      {loading ? (
+        <LoadingSpinner message="Loading faculty directory..." />
+      ) : !error ? (
+        /* Faculty Table */
+        <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+          {/* Table Header */}
+          <div className="hidden sm:grid grid-cols-[2fr_1fr_1fr_1fr_1fr] gap-4 border-b border-slate-200 bg-slate-50 px-6 py-3">
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+              Name
+            </span>
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+              Department
+            </span>
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+              Max Hours
+            </span>
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+              Status
+            </span>
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">
+              Action
+            </span>
+          </div>
+
+          {/* Table Rows */}
+          {filtered.map((faculty, index) => {
+            const initials = getInitials(faculty.name);
+            const email = getEmail(faculty.name);
+            const displayName = getDisplayName(faculty.name);
+            const { status, schedule } = getFacultyStatus(faculty);
+            const avatarColor = AVATAR_COLORS[index % AVATAR_COLORS.length];
+
+            return (
               <div
-                className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-semibold shrink-0 ${faculty.avatarColor}`}
+                key={faculty.id}
+                className="grid grid-cols-1 sm:grid-cols-[2fr_1fr_1fr_1fr_1fr] gap-3 sm:gap-4 items-center px-6 py-4 border-b border-slate-100 last:border-b-0 hover:bg-slate-50/50 transition-colors"
               >
-                {faculty.initials}
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-slate-900">
-                  {faculty.name}
-                  {faculty.status === 'Visiting' && (
-                    <span className="ml-1.5 text-xs font-normal text-slate-400">
-                      (Visiting)
-                    </span>
-                  )}
-                </p>
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <Mail className="h-3 w-3 text-slate-400" />
-                  <span className="text-xs text-slate-400">{faculty.email}</span>
+                {/* Name & Avatar */}
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-semibold shrink-0 ${avatarColor}`}
+                  >
+                    {initials}
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">
+                      {displayName}
+                      {status === 'Visiting' && (
+                        <span className="ml-1.5 text-xs font-normal text-slate-400">
+                          (Visiting)
+                        </span>
+                      )}
+                    </p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <Mail className="h-3 w-3 text-slate-400" />
+                      <span className="text-xs text-slate-400">{email}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Department */}
+                <div className="flex items-center gap-2 sm:block">
+                  <span className="text-xs text-slate-400 sm:hidden">Dept:</span>
+                  <span className="text-sm text-slate-600">{faculty.department}</span>
+                </div>
+
+                {/* Max Hours */}
+                <div className="flex items-center gap-2">
+                  <Clock className="h-3.5 w-3.5 text-slate-400 hidden sm:block" />
+                  <span className="text-xs text-slate-400 sm:hidden">Hours:</span>
+                  <span className="text-sm text-slate-600">
+                    {faculty.max_hours_per_day} hrs/day
+                  </span>
+                </div>
+
+                {/* Status */}
+                <div>
+                  <span
+                    className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusStyles[status]}`}
+                  >
+                    {status}
+                    {schedule && ` (${schedule})`}
+                  </span>
+                </div>
+
+                {/* Action */}
+                <div className="text-right">
+                  <button className="rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100 transition-colors">
+                    View Schedule
+                  </button>
                 </div>
               </div>
-            </div>
+            );
+          })}
 
-            {/* Department */}
-            <div className="flex items-center gap-2 sm:block">
-              <span className="text-xs text-slate-400 sm:hidden">Dept:</span>
-              <span className="text-sm text-slate-600">{faculty.department}</span>
+          {filtered.length === 0 && (
+            <div className="px-6 py-12 text-center text-sm text-slate-400">
+              No faculty members found matching your search.
             </div>
-
-            {/* Max Hours */}
-            <div className="flex items-center gap-2">
-              <Clock className="h-3.5 w-3.5 text-slate-400 hidden sm:block" />
-              <span className="text-xs text-slate-400 sm:hidden">Hours:</span>
-              <span className="text-sm text-slate-600">{faculty.maxHours}</span>
-            </div>
-
-            {/* Status */}
-            <div>
-              <span
-                className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusStyles[faculty.status]}`}
-              >
-                {faculty.status}
-                {faculty.schedule && ` (${faculty.schedule})`}
-              </span>
-            </div>
-
-            {/* Action */}
-            <div className="text-right">
-              <button className="rounded-lg bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-700 hover:bg-indigo-100 transition-colors">
-                View Schedule
-              </button>
-            </div>
-          </div>
-        ))}
-
-        {filtered.length === 0 && (
-          <div className="px-6 py-12 text-center text-sm text-slate-400">
-            No faculty members found matching your search.
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }
