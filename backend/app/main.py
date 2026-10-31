@@ -59,3 +59,23 @@ def dataset_info():
 
     except (FileNotFoundError, ValueError) as error:
         raise HTTPException(status_code=500, detail=str(error))
+
+
+@app.get("/api/dataset/full")
+def dataset_full():
+    """Return the full read-only dataset records."""
+    try:
+        dataset = load_dataset()
+
+        return {
+            "rooms": dataset["rooms"],
+            "faculty": dataset["faculty"],
+            "student_groups": dataset["student_groups"],
+            "courses": dataset["courses"],
+            "sessions": dataset["sessions"],
+            "booking_requests": dataset["booking_requests"],
+            "exams": dataset["exams"],
+        }
+
+    except (FileNotFoundError, ValueError) as error:
+        raise HTTPException(status_code=500, detail=str(error))
