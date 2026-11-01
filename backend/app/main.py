@@ -17,6 +17,7 @@ from app.bookings.routes import router as booking_router
 from app.examinations.routes import router as exam_router
 from app.rescheduling.routes import router as reschedule_router
 from app.admin.routes import router as admin_router
+from app.ai.routes import router as ai_router
 
 
 @asynccontextmanager
@@ -38,6 +39,7 @@ app.include_router(booking_router)
 app.include_router(exam_router)
 app.include_router(reschedule_router)
 app.include_router(admin_router)
+app.include_router(ai_router)
 
 
 @app.get("/")

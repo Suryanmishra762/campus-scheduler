@@ -54,6 +54,14 @@ class Settings:
         default_factory=lambda: _env("TEST_DATABASE_URL")
     )
 
+    # ── Gemini LLM Configuration ────────────────────────
+    gemini_api_key: str = field(
+        default_factory=lambda: _env("GEMINI_API_KEY")
+    )
+    gemini_model: str = field(
+        default_factory=lambda: _env("GEMINI_MODEL", "gemini-2.5-flash")
+    )
+
     def __post_init__(self) -> None:
         """Validate settings at construction time (fail-fast)."""
         if self.jwt_algorithm and self.jwt_algorithm not in _ALLOWED_JWT_ALGORITHMS:
