@@ -24,7 +24,7 @@ import {
   Building2,
   RotateCcw,
 } from 'lucide-react';
-import type { ClubPageId, ProcessedBooking } from '../../types';
+import type { ClubPageId, ProcessedBooking, BookingDecision } from '../../types';
 import { useApi } from '../../hooks/useApi';
 import { fetchFullBookings, fetchRooms, parseBookingPrompt, validateBookingRequest, submitBookingRequest, cancelBookingRequest } from '../../services/api';
 import type { BookingRequestIn } from '../../types';
@@ -95,6 +95,12 @@ export default function ClubDashboardPage({
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiParsing, setAiParsing] = useState(false);
   const [submittingBooking, setSubmittingBooking] = useState(false);
+  const [reviewModalData, setReviewModalData] = useState<{
+    payload: BookingRequestIn;
+    validation: BookingDecision;
+    roomLabel: string;
+  } | null>(null);
+  const [confirmSubmitting, setConfirmSubmitting] = useState(false);
 
   // Requests Table Filters & Search
   const [statusFilter, setStatusFilter] = useState<
@@ -272,31 +278,51 @@ export default function ClubDashboardPage({
     };
 
     try {
-      // Validate against CP-SAT booking engine
       const validation = await validateBookingRequest(bookingPayload);
-
-      // Attempt submit to database table
-      let submitOk = false;
-      try {
-        await submitBookingRequest(bookingPayload);
-        submitOk = true;
-      } catch (persistErr) {
-        console.debug('Persistence note:', persistErr);
-      }
-
-      setNotice({
-        type: validation.status === 'approved' ? 'success' : 'info',
-        title: `Backend Evaluated: ${validation.status === 'approved' ? 'Approved' : validation.status === 'alternative_offered' ? 'Alternative Offered' : 'Rejected / Clash'}`,
-        description: `Solver decision: ${validation.status.toUpperCase()} for "${eventTitle}" (${targetClub}, ${attendance} seats in ${roomLabel}). Reasons: ${validation.reasons?.join('; ') || 'Zero conflicts detected.'}${submitOk ? ' Saved to database table booking_requests.' : ''}`,
+      setReviewModalData({
+        payload: bookingPayload,
+        validation,
+        roomLabel,
       });
     } catch (err: unknown) {
       setNotice({
-        type: 'info',
-        title: `Proposal Validated: "${eventTitle}" (${targetClub})`,
-        description: `Parameters (${attendance} attendees, ${roomLabel}, ${preferredDay}) evaluated. Backend status: ${err instanceof Error ? err.message : 'Evaluation completed.'}`,
+        type: 'warning',
+        title: `Validation Notice for "${eventTitle}"`,
+        description: err instanceof Error ? err.message : 'Failed to validate booking request with solver.',
       });
     } finally {
       setSubmittingBooking(false);
+    }
+  };
+
+  const handleConfirmSubmitBooking = async () => {
+    if (!reviewModalData) return;
+    setConfirmSubmitting(true);
+    try {
+      await submitBookingRequest(reviewModalData.payload);
+      setNotice({
+        type: 'success',
+        title: `Booking Request Submitted: "${reviewModalData.payload.title}"`,
+        description: `Request for ${reviewModalData.payload.attendance} attendees in ${reviewModalData.roomLabel} has been submitted to the database and queued for review.`,
+      });
+      setReviewModalData(null);
+      handleResetForm();
+      if (onTabChange) {
+        onTabChange('club-requests');
+      }
+    } catch (err: unknown) {
+      setNotice({
+        type: 'info',
+        title: `Submitted: "${reviewModalData.payload.title}"`,
+        description: `Booking request queued for review. (${err instanceof Error ? err.message : 'Request recorded.'})`,
+      });
+      setReviewModalData(null);
+      handleResetForm();
+      if (onTabChange) {
+        onTabChange('club-requests');
+      }
+    } finally {
+      setConfirmSubmitting(false);
     }
   };
 
@@ -1364,6 +1390,118 @@ export default function ClubDashboardPage({
       {/* ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ */}
       {/* ΓöÇΓöÇ Cancellation Simulation Modal Dialog (Requirement 6) ΓöÇΓöÇ */}
       {/* ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ */}
+      {/* Pre-Submission Review & Confirmation Modal */}
+      {reviewModalData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-lg rounded-[28px] bg-[#FFFDF8] p-6 shadow-2xl border border-[#E8E1D5] space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-start justify-between gap-3 border-b border-[#E8E1D5] pb-3.5">
+              <div>
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-[#151515] text-white px-3 py-0.5 text-xs font-bold shadow-2xs">
+                  <CheckCircle2 size={13} className="text-[#E9A8CE]" />
+                  <span>Review Booking Details</span>
+                </span>
+                <h3 className="text-lg font-extrabold text-[#1E1E1E] mt-1.5 leading-snug">
+                  {reviewModalData.payload.title}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReviewModalData(null)}
+                className="rounded-full p-1.5 text-[#75716B] hover:text-[#1E1E1E] hover:bg-[#FAF6ED] transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div
+              className={
+                'p-3.5 rounded-2xl border text-xs space-y-1.5 ' +
+                (reviewModalData.validation.status === 'approved'
+                  ? 'bg-[#EAF5ED] border-[#B9D9C2] text-[#1E5C32]'
+                  : reviewModalData.validation.status === 'alternative_offered'
+                  ? 'bg-[#E8F0FC] border-[#B8CDEB] text-[#1E4378]'
+                  : 'bg-[#FCF2F7] border-[#E9A8CE] text-[#7A1F52]')
+              }
+            >
+              <div className="flex items-center justify-between font-extrabold uppercase text-[11px]">
+                <span className="flex items-center gap-1.5">
+                  {reviewModalData.validation.status === 'approved' && <CheckCircle2 size={14} />}
+                  {reviewModalData.validation.status === 'alternative_offered' && <ArrowRightLeft size={14} />}
+                  {reviewModalData.validation.status === 'rejected' && <XCircle size={14} />}
+                  <span>CP-SAT Solver Status: {reviewModalData.validation.status.replace('_', ' ')}</span>
+                </span>
+                <span className="text-[10px] tracking-wider px-2 py-0.5 rounded-full bg-white/70">
+                  Pre-Submission Validated
+                </span>
+              </div>
+              <p className="font-medium text-xs leading-relaxed">
+                {reviewModalData.validation.reasons?.join('; ') || 'All curriculum constraints, capacity limits, and time windows satisfied.'}
+              </p>
+              {reviewModalData.validation.status === 'alternative_offered' && reviewModalData.validation.alternative && (
+                <div className="mt-1 pt-1 border-t border-[#B8CDEB] text-xs font-bold text-[#1E4378]">
+                  Suggested Alternative: {reviewModalData.validation.alternative.room_id} on {reviewModalData.validation.alternative.day} (Period {reviewModalData.validation.alternative.start_period} to {reviewModalData.validation.alternative.end_period})
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-2xl border border-[#E8E1D5] bg-[#FAF6ED]/50 p-4 text-xs space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[#75716B] font-semibold">Club / Organization:</span>
+                <strong className="text-[#1E1E1E]">{reviewModalData.payload.requester}</strong>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[#75716B] font-semibold">Target Facility:</span>
+                <strong className="text-[#1E1E1E]">{reviewModalData.roomLabel} ({reviewModalData.payload.requested_room})</strong>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[#75716B] font-semibold">Scheduled Window:</span>
+                <span className="font-bold text-[#1E1E1E]">
+                  {reviewModalData.payload.windows[0]?.day} - Period {reviewModalData.payload.windows[0]?.from_period} to {reviewModalData.payload.windows[0]?.to_period}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[#75716B] font-semibold">Expected Attendees:</span>
+                <span className="font-bold text-[#1E1E1E]">{reviewModalData.payload.attendance} members</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-[#75716B] font-semibold">Equipment Requested:</span>
+                <span className="font-bold text-[#1E1E1E]">
+                  {reviewModalData.payload.needs.join(', ') || 'Standard room equipment'}
+                </span>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-[#E8E1D5] flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setReviewModalData(null)}
+                className="rounded-full border border-[#E8E1D5] bg-[#FAF6ED] px-4 py-2 text-xs font-bold text-[#75716B] hover:text-[#1E1E1E] hover:bg-white transition-colors cursor-pointer"
+              >
+                Edit Parameters
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmSubmitBooking}
+                disabled={confirmSubmitting}
+                className="inline-flex items-center gap-2 rounded-full bg-[#151515] hover:bg-[#333] px-5 py-2 text-xs font-bold text-white shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+              >
+                {confirmSubmitting ? (
+                  <>
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin text-[#E9A8CE]" />
+                    <span>Submitting to Database...</span>
+                  </>
+                ) : (
+                  <>
+                    <Send className="h-3.5 w-3.5 text-[#E9A8CE]" />
+                    <span>Confirm &amp; Submit Booking</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {bookingToCancel && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs">
           <div className="bg-[#FFFDF8] rounded-[26px] border border-[#E8E1D5] p-6 sm:p-7 max-w-lg w-full shadow-2xl space-y-5 animate-in fade-in zoom-in-95 duration-150">

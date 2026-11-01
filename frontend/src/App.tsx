@@ -1,4 +1,5 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
+import { ShieldAlert } from 'lucide-react';
 import Sidebar from './components/layout/Sidebar';
 import TopBar from './components/layout/TopBar';
 import DashboardPage from './pages/DashboardPage';
@@ -10,9 +11,87 @@ import BookingsPage from './pages/BookingsPage';
 import CoordinatorDashboardPage from './pages/coordinator/CoordinatorDashboardPage';
 import FacultyPortalPage from './pages/faculty/FacultyPortalPage';
 import ClubDashboardPage from './pages/club/ClubDashboardPage';
+import LandingPage from './pages/LandingPage';
+import LoginPage from './pages/LoginPage';
+import NotFoundPage from './pages/NotFoundPage';
 import { useApi } from './hooks/useApi';
 import { fetchFaculty } from './services/api';
-import type { PageId, UserRole, CoordinatorPageId, FacultyPageId, ClubPageId, Faculty } from './types';
+import { getStoredUser, logout, type AuthUser, type UserRoleType } from './services/auth';
+import type {
+  PageId,
+  UserRole,
+  CoordinatorPageId,
+  FacultyPageId,
+  ClubPageId,
+  AdminPageId,
+  Faculty,
+} from './types';
+
+const ADMIN_PAGES: PageId[] = [
+  'dashboard',
+  'timetable',
+  'rooms',
+  'faculty',
+  'exams',
+  'bookings',
+];
+
+const COORDINATOR_PAGES: PageId[] = [
+  'coordinator-overview',
+  'coordinator-timetable',
+  'coordinator-sessions',
+  'coordinator-bookings',
+  'coordinator-approvals',
+];
+
+const FACULTY_PAGES: PageId[] = [
+  'faculty-overview',
+  'faculty-timetable',
+  'faculty-unavailability',
+  'faculty-sessions',
+  'faculty-ai',
+];
+
+const CLUB_PAGES: PageId[] = [
+  'club-overview',
+  'club-submit',
+  'club-requests',
+  'club-tracker',
+];
+
+const ALL_PAGES: PageId[] = [
+  ...ADMIN_PAGES,
+  ...COORDINATOR_PAGES,
+  ...FACULTY_PAGES,
+  ...CLUB_PAGES,
+];
+
+function toUiRole(authRole: UserRoleType): UserRole {
+  if (authRole === 'department_coordinator') return 'coordinator';
+  return authRole;
+}
+
+function getRoleDefaultPage(role: UserRole): PageId {
+  switch (role) {
+    case 'coordinator':
+      return 'coordinator-overview';
+    case 'faculty':
+      return 'faculty-overview';
+    case 'club':
+      return 'club-overview';
+    case 'admin':
+    default:
+      return 'dashboard';
+  }
+}
+
+function isPageAllowedForRole(role: UserRole, pageId: PageId): boolean {
+  if (role === 'admin') return ADMIN_PAGES.includes(pageId as AdminPageId);
+  if (role === 'coordinator') return COORDINATOR_PAGES.includes(pageId as CoordinatorPageId);
+  if (role === 'faculty') return FACULTY_PAGES.includes(pageId as FacultyPageId);
+  if (role === 'club') return CLUB_PAGES.includes(pageId as ClubPageId);
+  return false;
+}
 
 const pageTitles: Record<PageId, { title: string; subtitle: string }> = {
   // Admin pages
@@ -87,13 +166,47 @@ const pageTitles: Record<PageId, { title: string; subtitle: string }> = {
 };
 
 function App() {
-  const [currentRole, setCurrentRole] = useState<UserRole>('admin');
-  const [currentPage, setCurrentPage] = useState<PageId>('dashboard');
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => getStoredUser());
+  const [currentPath, setCurrentPath] = useState<string>(() => window.location.pathname || '/');
+
+  const [currentRole, setCurrentRole] = useState<UserRole>(() => {
+    const stored = getStoredUser();
+    return stored ? toUiRole(stored.role) : 'admin';
+  });
+
+  const [currentPage, setCurrentPage] = useState<PageId>(() => {
+    const rawPath = window.location.pathname.replace(/^\/|\/$/g, '');
+    if (ALL_PAGES.includes(rawPath as PageId)) {
+      return rawPath as PageId;
+    }
+    const stored = getStoredUser();
+    return stored ? getRoleDefaultPage(toUiRole(stored.role)) : 'dashboard';
+  });
+
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [selectedFacultyId, setSelectedFacultyId] = useState('F01');
-  const [coordinatorDept, setCoordinatorDept] = useState('CSE');
+  const [selectedFacultyId, setSelectedFacultyId] = useState<string>(
+    () => getStoredUser()?.faculty_id ?? 'F01'
+  );
+  const [coordinatorDept, setCoordinatorDept] = useState<string>(
+    () => getStoredUser()?.department ?? 'CSE'
+  );
   const [adminFacultyScheduleId, setAdminFacultyScheduleId] = useState<string | null>(null);
+
+  // Synchronize browser popstate events (back / forward buttons)
+  useEffect(() => {
+    const handlePopState = () => {
+      const path = window.location.pathname || '/';
+      setCurrentPath(path);
+      const page = path.replace(/^\/|\/$/g, '');
+      if (ALL_PAGES.includes(page as PageId)) {
+        setCurrentPage(page as PageId);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // Load faculty list for role profile synchronization
   const { data: facultyList } = useApi(fetchFaculty);
@@ -103,14 +216,28 @@ function App() {
     return facultyList.find((f) => f.id === selectedFacultyId) ?? facultyList[0];
   }, [facultyList, selectedFacultyId]);
 
+  const navigateTo = useCallback((route: string) => {
+    const target = route.startsWith('/') ? route : `/${route}`;
+    if (window.location.pathname !== target) {
+      window.history.pushState(null, '', target);
+    }
+    setCurrentPath(target);
+    setMobileMenuOpen(false);
+
+    const stripped = target.replace(/^\/|\/$/g, '');
+    if (ALL_PAGES.includes(stripped as PageId)) {
+      setCurrentPage(stripped as PageId);
+    }
+  }, []);
+
   const handleFacultyChange = useCallback((facultyId: string) => {
     setSelectedFacultyId(facultyId);
   }, []);
 
   const handleViewFacultySchedule = useCallback((facultyId: string) => {
     setAdminFacultyScheduleId(facultyId);
-    setCurrentPage('timetable');
-  }, []);
+    navigateTo('/timetable');
+  }, [navigateTo]);
 
   const handleClearFacultySchedule = useCallback(() => {
     setAdminFacultyScheduleId(null);
@@ -121,22 +248,36 @@ function App() {
   }, []);
 
   const handleNavigate = useCallback((page: string) => {
-    setCurrentPage(page as PageId);
-    setMobileMenuOpen(false);
-  }, []);
+    navigateTo(page);
+  }, [navigateTo]);
 
   const handleRoleChange = useCallback((newRole: UserRole) => {
     setCurrentRole(newRole);
-    if (newRole === 'admin') {
-      setCurrentPage('dashboard');
-    } else if (newRole === 'coordinator') {
-      setCurrentPage('coordinator-overview');
-    } else if (newRole === 'faculty') {
-      setCurrentPage('faculty-overview');
-    } else if (newRole === 'club') {
-      setCurrentPage('club-overview');
+    const target = getRoleDefaultPage(newRole);
+    navigateTo(`/${target}`);
+  }, [navigateTo]);
+
+  const handleLoginSuccess = useCallback((user: AuthUser) => {
+    setCurrentUser(user);
+    if (user.faculty_id) {
+      setSelectedFacultyId(user.faculty_id);
     }
-  }, []);
+    if (user.department) {
+      setCoordinatorDept(user.department);
+    }
+    const uiRole = toUiRole(user.role);
+    setCurrentRole(uiRole);
+    const targetPage = getRoleDefaultPage(uiRole);
+    navigateTo(`/${targetPage}`);
+  }, [navigateTo]);
+
+  const handleLogout = useCallback(() => {
+    logout();
+    setCurrentUser(null);
+    setSelectedFacultyId('F01');
+    setCoordinatorDept('CSE');
+    navigateTo('/login');
+  }, [navigateTo]);
 
   const handleToggleCollapse = useCallback(() => {
     if (window.innerWidth < 1024) {
@@ -150,7 +291,96 @@ function App() {
     setMobileMenuOpen((prev) => !prev);
   }, []);
 
+  // ── Route Handling & RBAC Protection ──
+  const normalizedPath = currentPath.replace(/\/$/, '') || '/';
+
+  // 1. Public Landing Page
+  if (normalizedPath === '/') {
+    return (
+      <LandingPage
+        onNavigate={navigateTo}
+        isAuthenticated={Boolean(currentUser)}
+      />
+    );
+  }
+
+  // 2. Login Page
+  if (normalizedPath === '/login') {
+    return (
+      <LoginPage
+        onLoginSuccess={handleLoginSuccess}
+        onNavigateHome={() => navigateTo('/')}
+      />
+    );
+  }
+
+  // 3. Check for 404
+  const potentialPage = normalizedPath.slice(1);
+  const isKnownPage = ALL_PAGES.includes(potentialPage as PageId);
+  if (!isKnownPage) {
+    return (
+      <NotFoundPage
+        onNavigate={navigateTo}
+        currentUser={currentUser}
+      />
+    );
+  }
+
+  // 4. Check Authentication requirement for protected pages
+  if (!currentUser) {
+    return (
+      <LoginPage
+        onLoginSuccess={handleLoginSuccess}
+        onNavigateHome={() => navigateTo('/')}
+        redirectNotice="Please sign in to access your campus workspace."
+      />
+    );
+  }
+
+  // 5. Check Role Authorization (Anti-privilege escalation)
+  const isAllowed = isPageAllowedForRole(currentRole, currentPage);
+
   const renderPage = () => {
+    if (!isAllowed) {
+      const authorizedDefault = getRoleDefaultPage(toUiRole(currentUser.role));
+      return (
+        <div className="flex-1 flex flex-col items-center justify-center p-6 text-center min-h-[60vh]">
+          <div className="max-w-md w-full bg-[#FFFDF8] border border-[#E8E1D5] rounded-[28px] p-8 shadow-sm space-y-4">
+            <div className="w-14 h-14 rounded-2xl bg-[#FDF2F4] border border-[#F5C2C7] text-[#DC3545] mx-auto flex items-center justify-center">
+              <ShieldAlert size={28} />
+            </div>
+            <div className="space-y-1.5">
+              <span className="text-[10px] font-black uppercase tracking-widest text-[#842029] bg-[#FDF2F4] px-3 py-1 rounded-full border border-[#F5C2C7]">
+                Access Restricted (403 Forbidden)
+              </span>
+              <h2 className="text-xl font-extrabold text-[#1E1E1E]">
+                Unauthorized Portal View
+              </h2>
+              <p className="text-xs text-[#75716B] leading-relaxed">
+                Your authenticated account (<strong className="text-[#1E1E1E]">{currentUser.full_name}</strong>) with role <strong className="text-[#1E1E1E]">{currentUser.role.replace('_', ' ')}</strong> does not have access permissions for this section.
+              </p>
+            </div>
+            <div className="pt-2 flex flex-col sm:flex-row gap-2 justify-center">
+              <button
+                type="button"
+                onClick={() => navigateTo(`/${authorizedDefault}`)}
+                className="px-5 py-2.5 rounded-full bg-[#151515] hover:bg-black text-white text-xs font-bold cursor-pointer transition-colors"
+              >
+                Return to My Workspace
+              </button>
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="px-5 py-2.5 rounded-full border border-[#E8E1D5] bg-[#FFFDF8] hover:bg-[#FAF6ED] text-xs font-bold text-[#1E1E1E] cursor-pointer transition-colors"
+              >
+                Sign Out
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     switch (currentRole) {
       case 'coordinator':
         return (
@@ -249,6 +479,8 @@ function App() {
           activeFaculty={selectedFaculty}
           activeCoordinatorDept={currentRole === 'coordinator' ? coordinatorDept : undefined}
           onNavigate={handleNavigate}
+          currentUser={currentUser}
+          onLogout={handleLogout}
         />
 
         {/* Page content */}

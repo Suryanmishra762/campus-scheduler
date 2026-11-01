@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Calendar, Download } from 'lucide-react';
+import { Calendar, Download, Filter, Clock } from 'lucide-react';
 import { fetchFullExamData } from '../services/api';
 import { useApi } from '../hooks/useApi';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
@@ -72,6 +72,7 @@ function deriveBranchSem(groups: string[]): string {
 
 export default function ExamsPage() {
   const [selectedSemester, setSelectedSemester] = useState('End Semester - Nov 2027');
+  const [selectedCohort, setSelectedCohort] = useState('All');
 
   const {
     data: fullExamData,
@@ -85,7 +86,6 @@ export default function ExamsPage() {
 
   // Map backend data when available and matching the selected semester
   let displayedExams: ExamRow[] = [];
-  let scheduledCount = 0;
   let unscheduledCount = 0;
   let slotsUsed = 0;
   let slotsAvailable = 12;
@@ -95,7 +95,6 @@ export default function ExamsPage() {
     const courseMap = new Map(dataset.courses.map((c) => [c.id, c]));
     const roomMap = new Map(dataset.rooms.map((r) => [r.id, r]));
 
-    scheduledCount = schedule.scheduled_count;
     unscheduledCount = schedule.unscheduled_count;
     slotsUsed = schedule.slots_used;
     slotsAvailable = schedule.slots_available;
@@ -136,9 +135,15 @@ export default function ExamsPage() {
     displayedExams = mapped;
   }
 
+  const filteredExams = displayedExams.filter((e) => {
+    if (selectedCohort === 'All') return true;
+    if (selectedCohort === '1st Year') return e.branchSem.includes('1st Year') || e.code.startsWith('MA1') || e.code.startsWith('PH1') || e.code.startsWith('HS1') || e.code.startsWith('CS1') || e.code.startsWith('WS1');
+    return e.branchSem.toLowerCase().includes(selectedCohort.toLowerCase()) || e.code.toLowerCase().includes(selectedCohort.toLowerCase());
+  });
+
   const handleExport = () => {
     const headers = ['Code', 'Subject', 'Scheduled Day', 'Session', 'Venues', 'Branch & Sem', 'Size'];
-    const rows = displayedExams.map((e) => [
+    const rows = filteredExams.map((e) => [
       `"${e.code.replace(/"/g, '""')}"`,
       `"${e.subject.replace(/"/g, '""')}"`,
       `"${e.date}"`,
@@ -178,6 +183,25 @@ export default function ExamsPage() {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Student Cohort / Department Filter */}
+          <div className="relative">
+            <select
+              value={selectedCohort}
+              onChange={(e) => setSelectedCohort(e.target.value)}
+              className="appearance-none rounded-2xl border border-[#E8E1D5] bg-[#FFFDF8] px-3.5 py-2 pr-8 text-xs sm:text-sm font-semibold text-[#1E1E1E] shadow-2xs focus:border-[#E9A8CE] focus:outline-none cursor-pointer"
+              title="Filter by Student Cohort / Branch"
+            >
+              <option value="All">All Cohorts (41 Exams)</option>
+              <option value="1st Year">Common 1st Year (Y1)</option>
+              <option value="CSE">Computer Science (CSE)</option>
+              <option value="ECE">Electronics (ECE)</option>
+              <option value="EE">Electrical (EE)</option>
+              <option value="ME">Mechanical (ME)</option>
+              <option value="CE">Civil (CE)</option>
+            </select>
+            <Filter className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[#75716B] pointer-events-none" />
+          </div>
+
           {/* Semester Selector */}
           <select
             value={selectedSemester}
@@ -214,7 +238,7 @@ export default function ExamsPage() {
         /* Exam Table */
         <div className="rounded-[22px] border border-[#E8E1D5] bg-[#FFFDF8] shadow-xs overflow-hidden">
           {/* Table Header */}
-          <div className="hidden md:grid grid-cols-[100px_2fr_100px_80px_1.5fr_1fr] gap-4 border-b border-[#E8E1D5] bg-[#FAF6ED] px-6 py-3.5">
+          <div className="hidden md:grid grid-cols-[100px_2fr_90px_150px_1.5fr_1fr] gap-4 border-b border-[#E8E1D5] bg-[#FAF6ED] px-6 py-3.5">
             <span className="text-[11px] font-bold text-[#75716B] uppercase tracking-wider">
               Code
             </span>
@@ -225,21 +249,21 @@ export default function ExamsPage() {
               Day
             </span>
             <span className="text-[11px] font-bold text-[#75716B] uppercase tracking-wider">
-              Session
+              Session & Duration
             </span>
             <span className="text-[11px] font-bold text-[#75716B] uppercase tracking-wider">
-              Venue(s)
+              Allocated Venues (50% Seating)
             </span>
             <span className="text-[11px] font-bold text-[#75716B] uppercase tracking-wider">
-              Branch & Sem
+              Cohort & Enrolled
             </span>
           </div>
 
           {/* Table Rows */}
-          {displayedExams.map((exam, index) => (
+          {filteredExams.map((exam, index) => (
             <div
               key={exam.id}
-              className={`grid grid-cols-1 md:grid-cols-[100px_2fr_100px_80px_1.5fr_1fr] gap-2 md:gap-4 items-center px-6 py-4 border-b border-[#EFE8DA] last:border-b-0 hover:bg-[#FAF6ED]/70 transition-colors ${
+              className={`grid grid-cols-1 md:grid-cols-[100px_2fr_90px_150px_1.5fr_1fr] gap-2 md:gap-4 items-center px-6 py-4 border-b border-[#EFE8DA] last:border-b-0 hover:bg-[#FAF6ED]/70 transition-colors ${
                 index % 2 === 0 ? 'bg-[#FFFDF8]' : 'bg-[#FAF6ED]/30'
               }`}
             >
@@ -261,16 +285,20 @@ export default function ExamsPage() {
                 <span className="text-xs sm:text-sm font-medium text-[#1E1E1E]">{exam.date}</span>
               </div>
 
-              {/* Session */}
-              <div>
+              {/* Session & Duration */}
+              <div className="space-y-0.5">
                 <span
-                  className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
+                  className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
                     exam.session === 'AM'
                       ? 'bg-[#F4DA69]/30 text-[#6B530E] border border-[#F4DA69]/50'
                       : 'bg-[#B8CDEB]/40 text-[#1E3A5F] border border-[#B8CDEB]/60'
                   }`}
                 >
-                  {exam.session === 'AM' ? '🌅 AM' : '🌇 PM'}
+                  <Clock size={11} />
+                  <span>{exam.session === 'AM' ? 'AM (09:30–12:30)' : 'PM (14:00–17:00)'}</span>
+                </span>
+                <span className="block text-[10px] text-[#75716B] font-semibold pl-1">
+                  3h standard duration
                 </span>
               </div>
 
@@ -288,7 +316,7 @@ export default function ExamsPage() {
             </div>
           ))}
 
-          {displayedExams.length === 0 && (
+          {filteredExams.length === 0 && (
             <div className="px-6 py-16 text-center">
               <div className="w-12 h-12 rounded-2xl bg-[#FFFDF8] border border-[#E8E1D5] mx-auto flex items-center justify-center text-[#75716B] mb-3 shadow-2xs">
                 <Calendar className="h-6 w-6 text-[#A39E95]" />
@@ -309,7 +337,7 @@ export default function ExamsPage() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-2xl bg-[#FFFDF8] border border-[#E8E1D5] px-5 py-3.5 shadow-2xs">
           <div className="flex items-center gap-2 flex-wrap text-xs sm:text-sm text-[#75716B]">
             <span>
-              Showing <strong className="font-bold text-[#1E1E1E]">{isCurrentPeriod ? scheduledCount : 0}</strong> examinations scheduled
+              Showing <strong className="font-bold text-[#1E1E1E]">{isCurrentPeriod ? filteredExams.length : 0}</strong> examinations scheduled {selectedCohort !== "All" && `(${selectedCohort} cohort)`}
             </span>
             {isCurrentPeriod ? (
               unscheduledCount > 0 ? (

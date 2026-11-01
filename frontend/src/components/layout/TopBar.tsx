@@ -1,5 +1,6 @@
-import { Bell, Menu } from 'lucide-react';
+import { Bell, Menu, LogOut, Home } from 'lucide-react';
 import type { Faculty, UserRole } from '../../types';
+import type { AuthUser } from '../../services/auth';
 import GlobalSearch from './GlobalSearch';
 
 interface TopBarProps {
@@ -11,6 +12,8 @@ interface TopBarProps {
   activeFaculty?: Faculty;
   activeCoordinatorDept?: string;
   onNavigate?: (page: string) => void;
+  currentUser?: AuthUser | null;
+  onLogout?: () => void;
 }
 
 function getFacultyInitials(name: string): string {
@@ -68,6 +71,8 @@ export default function TopBar({
   activeFaculty,
   activeCoordinatorDept,
   onNavigate,
+  currentUser,
+  onLogout,
 }: TopBarProps) {
   let profile = roleProfiles[currentRole] ?? roleProfiles.admin;
 
@@ -89,6 +94,16 @@ export default function TopBar({
       sub: `Faculty (${activeFaculty.department} Dept)`,
       initials: getFacultyInitials(activeFaculty.name),
       bg: 'bg-[#1E1E1E]',
+    };
+  }
+
+  // Override profile with authenticated user info when available
+  if (currentUser) {
+    profile = {
+      ...profile,
+      label: currentUser.full_name,
+      sub: currentUser.email,
+      initials: getFacultyInitials(currentUser.full_name),
     };
   }
 
@@ -115,6 +130,19 @@ export default function TopBar({
 
         {/* Right: Dev Role Switcher + Notification Bell + Profile */}
         <div className="flex items-center gap-2.5 shrink-0">
+          {/* Campus Home Button */}
+          {onNavigate && (
+            <button
+              type="button"
+              onClick={() => onNavigate('/')}
+              className="w-9 h-9 rounded-full bg-[#FFFDF8] border border-[#E8E1D5] text-[#1E1E1E] flex items-center justify-center hover:bg-[#FAF6ED] transition-colors cursor-pointer shadow-2xs shrink-0"
+              title="Public Campus Landing Page"
+              aria-label="Public Campus Landing Page"
+            >
+              <Home size={15} />
+            </button>
+          )}
+
           {/* Dev Role Preview Switcher */}
           <div className="flex items-center gap-1.5 bg-[#FFFDF8] border border-[#E8E1D5] rounded-full py-1 px-2.5 shadow-2xs">
             <span className="inline-flex items-center gap-1 text-[10px] font-bold text-[#6B530E] bg-[#F4DA69]/35 border border-[#F4DA69]/50 rounded-full px-2 py-0.5">
@@ -163,6 +191,19 @@ export default function TopBar({
               <p className="text-[11px] text-[#75716B] leading-tight">{profile.sub}</p>
             </div>
           </div>
+
+          {/* Sign Out Button */}
+          {onLogout && (
+            <button
+              type="button"
+              onClick={onLogout}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#FFFDF8] border border-[#E8E1D5] hover:bg-[#FDF2F4] hover:border-[#F5C2C7] hover:text-[#DC3545] text-xs font-bold text-[#75716B] transition-colors cursor-pointer shadow-2xs shrink-0 ml-0.5"
+              title="Sign out from current session"
+            >
+              <LogOut size={13} />
+              <span className="hidden sm:inline">Sign Out</span>
+            </button>
+          )}
         </div>
       </div>
 

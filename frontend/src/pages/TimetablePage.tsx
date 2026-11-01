@@ -16,6 +16,7 @@ import {
   Sparkles,
   Monitor,
   CalendarDays,
+  DoorOpen,
 } from 'lucide-react';
 import { fetchFullTimetableData, clearTimetableCache } from '../services/api';
 import { useApi } from '../hooks/useApi';
@@ -56,6 +57,7 @@ interface TimetableBlock {
   code: string;
   name: string;
   venue: string;
+  roomId: string;
   day: number;       // 0 = Monday ... 6 = Sunday
   startSlot: number; // 0 = 8 AM, 6 = 2 PM
   span: number;      // duration in periods
@@ -68,6 +70,7 @@ interface TimetableBlock {
   duration: number;
   timeSlotString: string;
   size: number;
+  hasConflict?: boolean;
 }
 
 const pastelThemes: Record<
@@ -239,6 +242,10 @@ export default function TimetablePage({
   const [internalFacultyId, setInternalFacultyId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'week' | 'day'>('week');
   const [mobileSelectedDay, setMobileSelectedDay] = useState<number>(0);
+  const [viewType, setViewType] = useState<'cohort' | 'faculty' | 'room'>(
+    selectedFacultyId ? 'faculty' : 'cohort'
+  );
+  const [selectedRoomId, setSelectedRoomId] = useState<string>('CS-LAB-1');
 
   // If selectedFacultyId is explicitly set by parent, prioritize it; otherwise use local filter
   const activeFacultyId = selectedFacultyId !== undefined && selectedFacultyId !== null
@@ -319,6 +326,7 @@ export default function TimetablePage({
         code: s.course_id,
         name: course?.title ?? s.course_id,
         venue: venueName,
+        roomId: s.room_id,
         day: dayIdx,
         startSlot,
         span: s.duration,
@@ -337,6 +345,10 @@ export default function TimetablePage({
 
   const allFaculty = useMemo(() => {
     return timetableData?.dataset?.faculty ?? [];
+  }, [timetableData]);
+
+  const allRooms = useMemo(() => {
+    return timetableData?.dataset?.rooms ?? [];
   }, [timetableData]);
 
   const isFacultyFilterActive = Boolean(activeFacultyId);
@@ -364,12 +376,33 @@ export default function TimetablePage({
   );
 
   const filteredSessions = useMemo(() => {
-    if (isFacultyFilterActive) {
-      return mappedSessions.filter((s) => s.facultyId === activeFacultyId);
+    let list: TimetableBlock[] = [];
+    if (viewType === 'faculty') {
+      const fId = activeFacultyId || (allFaculty[0]?.id ?? '');
+      list = mappedSessions.filter((s) => s.facultyId === fId);
+    } else if (viewType === 'room') {
+      const rId = selectedRoomId || (allRooms[0]?.id ?? '');
+      list = mappedSessions.filter((s) => s.roomId === rId);
+    } else {
+      if (targetGroups.length === 0) {
+        list = [];
+      } else {
+        list = mappedSessions.filter((s) => s.groups.some((g) => targetGroups.includes(g)));
+      }
     }
-    if (targetGroups.length === 0) return [];
-    return mappedSessions.filter((s) => s.groups.some((g) => targetGroups.includes(g)));
-  }, [mappedSessions, isFacultyFilterActive, activeFacultyId, targetGroups]);
+
+    // Detect overlapping conflict sessions in current view
+    return list.map((session) => {
+      const hasConflict = list.some(
+        (other) =>
+          other.id !== session.id &&
+          other.day === session.day &&
+          Math.max(session.startSlot, other.startSlot) <
+            Math.min(session.startSlot + session.span, other.startSlot + other.span)
+      );
+      return { ...session, hasConflict };
+    });
+  }, [mappedSessions, viewType, activeFacultyId, allFaculty, selectedRoomId, allRooms, targetGroups]);
 
   // Session counts per day for the day selector pills
   const daySessionsCount = useMemo(() => {
@@ -436,6 +469,62 @@ export default function TimetablePage({
             </button>
           </div>
 
+          {/* Segmented View Mode: Student Cohort | Faculty | Room / Venue */}
+          <div className="flex items-center bg-[#FAF6ED] border border-[#E8E1D5] rounded-full p-1 shadow-2xs">
+            <button
+              type="button"
+              onClick={() => {
+                setViewType('cohort');
+                handleClearFaculty();
+              }}
+              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                viewType === 'cohort'
+                  ? 'bg-[#151515] text-white shadow-xs'
+                  : 'text-[#75716B] hover:text-[#1E1E1E]'
+              }`}
+            >
+              <Users size={12} className={viewType === 'cohort' ? 'text-[#E9A8CE]' : ''} />
+              <span>Cohort</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setViewType('faculty');
+                if (!activeFacultyId && allFaculty.length > 0) {
+                  handleFacultySelect(allFaculty[0].id);
+                }
+              }}
+              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                viewType === 'faculty'
+                  ? 'bg-[#151515] text-white shadow-xs'
+                  : 'text-[#75716B] hover:text-[#1E1E1E]'
+              }`}
+            >
+              <User size={12} className={viewType === 'faculty' ? 'text-[#E9A8CE]' : ''} />
+              <span>Faculty</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setViewType('room');
+                handleClearFaculty();
+                if (!selectedRoomId && allRooms.length > 0) {
+                  setSelectedRoomId(allRooms[0].id);
+                }
+              }}
+              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                viewType === 'room'
+                  ? 'bg-[#151515] text-white shadow-xs'
+                  : 'text-[#75716B] hover:text-[#1E1E1E]'
+              }`}
+            >
+              <DoorOpen size={12} className={viewType === 'room' ? 'text-[#E9A8CE]' : ''} />
+              <span>Room</span>
+            </button>
+          </div>
+
           {/* View mode toggle pills (Day / Week) */}
           <div className="flex items-center bg-[#FAF6ED] border border-[#E8E1D5] rounded-full p-1 shadow-2xs">
             <button
@@ -468,38 +557,65 @@ export default function TimetablePage({
 
         {/* Right: Filters & Solver Regenerate Action */}
         <div className="flex items-center gap-2.5 flex-wrap">
-          {/* Faculty Selector Filter */}
-          <div className="relative">
-            <select
-              value={activeFacultyId ?? ''}
-              onChange={(e) => {
-                const val = e.target.value;
-                if (val) {
-                  handleFacultySelect(val);
-                } else {
-                  handleClearFaculty();
-                }
-              }}
-              className={`appearance-none rounded-full border px-3.5 py-2 pr-8 text-xs font-bold shadow-2xs focus:outline-none cursor-pointer transition-colors ${
-                isFacultyFilterActive
-                  ? 'border-[#E9A8CE] bg-[#E9A8CE]/15 text-[#1E1E1E] ring-2 ring-[#E9A8CE]/20'
-                  : 'border-[#E8E1D5] bg-[#FFFDF8] text-[#1E1E1E] hover:bg-[#FAF6ED]'
-              }`}
-              title="Filter schedule by faculty member"
-            >
-              <option value="">Cohort Timetable (by Dept)</option>
-              <optgroup label="Faculty Member">
+          {/* Conditional Controls depending on viewType */}
+          {viewType === 'faculty' && (
+            <div className="relative">
+              <select
+                value={activeFacultyId ?? (allFaculty[0]?.id ?? '')}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val) {
+                    handleFacultySelect(val);
+                  }
+                }}
+                className="appearance-none rounded-full border border-[#E9A8CE] bg-[#FFFDF8] px-3.5 py-2 pr-8 text-xs font-bold text-[#1E1E1E] shadow-2xs focus:border-[#E9A8CE] focus:outline-none cursor-pointer hover:bg-[#FAF6ED]"
+                title="Select faculty member schedule"
+              >
                 {allFaculty.map((f) => (
                   <option key={f.id} value={f.id}>
                     {f.name} ({f.department})
                   </option>
                 ))}
-              </optgroup>
-            </select>
-            <Filter className="absolute right-3 top-1/2 -translate-y-1/2 h-3 w-3 text-[#75716B] pointer-events-none" />
-          </div>
+              </select>
+              <Filter className="absolute right-3 top-1/2 -translate-y-1/2 h-3 w-3 text-[#75716B] pointer-events-none" />
+            </div>
+          )}
 
-          {!isFacultyFilterActive ? (
+          {viewType === 'room' && (
+            <div className="relative">
+              <select
+                value={selectedRoomId}
+                onChange={(e) => setSelectedRoomId(e.target.value)}
+                className="appearance-none rounded-full border border-[#B8CDEB] bg-[#FFFDF8] px-3.5 py-2 pr-8 text-xs font-bold text-[#1E1E1E] shadow-2xs focus:border-[#B8CDEB] focus:outline-none cursor-pointer hover:bg-[#FAF6ED]"
+                title="Select room or laboratory venue"
+              >
+                <optgroup label="Computer Laboratories">
+                  {allRooms.filter((r) => r.type.startsWith('lab') || r.id.includes('LAB')).map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name} ({r.id} • {r.capacity} seats)
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="Lecture Halls & Auditoriums">
+                  {allRooms.filter((r) => r.type === 'lecture_hall' || r.type === 'auditorium' || r.id.startsWith('LH') || r.id.startsWith('AUD')).map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name} ({r.id} • {r.capacity} seats)
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="Classrooms & Workshops">
+                  {allRooms.filter((r) => !r.id.includes('LAB') && !r.id.startsWith('LH') && !r.id.startsWith('AUD')).map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.name} ({r.id} • {r.capacity} seats)
+                    </option>
+                  ))}
+                </optgroup>
+              </select>
+              <Filter className="absolute right-3 top-1/2 -translate-y-1/2 h-3 w-3 text-[#75716B] pointer-events-none" />
+            </div>
+          )}
+
+          {viewType === 'cohort' && (
             <>
               {/* Department Filter */}
               <div className="relative">
@@ -554,16 +670,6 @@ export default function TimetablePage({
                 </div>
               )}
             </>
-          ) : (
-            <button
-              type="button"
-              onClick={handleClearFaculty}
-              className="inline-flex items-center gap-1.5 rounded-full border border-[#E8E1D5] bg-[#FFFDF8] px-3.5 py-2 text-xs font-bold text-[#1E1E1E] shadow-2xs hover:bg-[#FAF6ED] transition-colors cursor-pointer"
-              title="Clear faculty filter and return to cohort timetable"
-            >
-              <X size={13} />
-              <span>Clear Filter</span>
-            </button>
           )}
 
           {/* Regenerate Action Button */}
@@ -640,11 +746,19 @@ export default function TimetablePage({
           </div>
 
           <div className="text-xs font-medium text-[#75716B]">
-            {isFacultyFilterActive && activeFaculty ? (
+            {viewType === 'faculty' && activeFaculty ? (
               <>
                 Active Faculty:{' '}
                 <span className="font-bold text-[#1E1E1E]">
                   {activeFaculty.name} ({activeFaculty.department})
+                </span>{' '}
+                ({filteredSessions.length} sessions)
+              </>
+            ) : viewType === 'room' ? (
+              <>
+                Active Room / Venue:{' '}
+                <span className="font-bold text-[#1E1E1E]">
+                  {allRooms.find((r) => r.id === selectedRoomId)?.name ?? selectedRoomId} ({selectedRoomId})
                 </span>{' '}
                 ({filteredSessions.length} sessions)
               </>
@@ -1008,6 +1122,11 @@ export default function TimetablePage({
                               >
                                 {session.kind}
                               </span>
+                              {session.hasConflict && (
+                                <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700 border border-rose-300 animate-pulse">
+                                  Conflict
+                                </span>
+                              )}
                             </div>
 
                             {/* Cohort Badge: Guaranteed visibility in top-right */}

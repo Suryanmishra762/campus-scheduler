@@ -1972,6 +1972,86 @@ export default function FacultyPortalPage({
               </button>
             </div>
           </div>
+        
+          {/* Before/After Timetable Comparison Card for Last Proposal */}
+          {lastProposal && (
+            <div className="rounded-[24px] border border-[#B9D9C2] bg-[#FFFDF8] p-5 shadow-xs space-y-3.5 animate-in fade-in mt-4">
+              <div className="flex items-center justify-between flex-wrap gap-2 pb-2.5 border-b border-[#E8E1D5]">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-xs font-bold px-2 py-0.5 rounded-lg bg-[#FAF6ED] border border-[#E8E1D5] text-[#1E1E1E]">
+                    Proposal ID: {lastProposal.proposal_id}
+                  </span>
+                  <span className="rounded-full bg-[#EAF5ED] text-[#1E5C32] border border-[#B9D9C2] px-2.5 py-0.5 text-xs font-extrabold uppercase">
+                    {lastProposal.status} ({lastProposal.solver_status})
+                  </span>
+                </div>
+                <span className="text-xs text-[#75716B] font-semibold">
+                  Solved in {lastProposal.solve_time_seconds.toFixed(2)}s • {lastProposal.moved_count} moved, {lastProposal.frozen_count} frozen
+                </span>
+              </div>
+
+              <div className="space-y-1">
+                <h4 className="text-xs font-extrabold text-[#1E1E1E] uppercase tracking-wider">
+                  Before vs. After Timetable Comparison
+                </h4>
+                <p className="text-xs text-[#75716B] font-medium">
+                  Optimal timetable perturbation calculated by CP-SAT solver with minimal moves ({lastProposal.moved_count} moved, {lastProposal.frozen_count} frozen).
+                </p>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-[#FAF6ED] border-b border-[#E8E1D5] text-[#75716B] uppercase font-bold text-[10px]">
+                    <tr>
+                      <th className="px-3 py-2">Session</th>
+                      <th className="px-3 py-2">Before (Original)</th>
+                      <th className="px-3 py-2">After (Proposed)</th>
+                      <th className="px-3 py-2">Action / Kind</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#EFE8DA]">
+                    {lastProposal.changes.map((ch, idx) => (
+                      <tr key={idx} className="hover:bg-[#FAF6ED]/50">
+                        <td className="px-3 py-2.5 font-mono font-bold text-[#1E1E1E]">
+                          {ch.session_id}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          {ch.before ? (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-[#FAF6ED] border border-[#E8E1D5] px-2 py-0.5 font-semibold text-[#75716B]">
+                              {ch.before.day} Period {ch.before.period} • {ch.before.room_id}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-[#A39E95] italic">New Session</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          {ch.after ? (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-[#EAF5ED] border border-[#B9D9C2] px-2 py-0.5 font-bold text-[#1E5C32]">
+                              {ch.after.day} Period {ch.after.period} • {ch.after.room_id}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-rose-600 italic">Unscheduled</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <span className="rounded-full bg-[#E8F0FC] text-[#1E4378] border border-[#B8CDEB] px-2 py-0.5 text-[10px] font-extrabold uppercase">
+                            {ch.kind}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="p-3 rounded-2xl bg-[#FDF8E2] border border-[#F4DA69]/60 text-xs text-[#6B530E] flex items-center justify-between">
+                <span>
+                  <strong>Status:</strong> Queued for Administrator review. Requires Admin approval before timetable reflects changes.
+                </span>
+              </div>
+            </div>
+          )}
+
         </div>
       )}
 

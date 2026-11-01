@@ -1367,10 +1367,15 @@ export default function CoordinatorDashboardPage({
                             {booking.status.replace('_', ' ')}
                           </span>
                         </td>
-                        <td className="px-4 py-3.5 text-[#75716B] max-w-xs font-medium">
+                        <td className="px-4 py-3.5 text-[#75716B] max-w-xs font-medium space-y-1">
                           <span className="line-clamp-2" title={booking.reasons?.join(', ')}>
                             {booking.reasons?.join(', ') || 'Optimal room fit: constraints satisfied.'}
                           </span>
+                          {booking.status === 'alternative_offered' && (booking.alternative || booking.allocated) && (
+                            <span className="inline-flex items-center gap-1 rounded-md bg-[#E8F0FC] text-[#1E4378] border border-[#B8CDEB] px-1.5 py-0.5 text-[10px] font-bold">
+                              Alternative Offered: {(booking.alternative ?? booking.allocated)?.room_id} ({(booking.alternative ?? booking.allocated)?.day} P{(booking.alternative ?? booking.allocated)?.start_period})
+                            </span>
+                          )}
                         </td>
                         <td className="px-4 py-3.5 text-right whitespace-nowrap">
                           {booking.status === 'pending' ? (
